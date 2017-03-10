@@ -1,0 +1,169 @@
+---
+title: "Subset Selection, Shrinkage Methods and Dimension Reduction"
+title: "Techniques Used: GLM, Tree, GAM, Neural Networks, SVM, Random Forests, Bagging and Boosting"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+##References
+1. [Introduction to statistical learning](http://www-bcf.usc.edu/~gareth/ISL/)
+2. [Elements of statistical learning](https://statweb.stanford.edu/~tibs/ElemStatLearn/)
+3. [R Bloggers](https://www.r-bloggers.com/)
+
+##Purpose of the Case Study
+Find alternative fitting approaches to the normal linear models besides the Ordinary Least Squares (OLS). OLS is ideal when the underlying relationship is Linear and we have n>>p. But if n is not much larger than p or p>n, there can be a lot of variability in the fit which can result in either overfitting and very poor predictive ability. 
+
+Variable Selection: By **constraining** or **shrinking** the estimated coefficients, we can sucessfully reduce the variance associated with the model with a little increase in bias which improves the predictive accuracy.
+
+Model Selection: We also want to compare between different advanced and more flexibile 
+
+## Packages Used and Data subsetting
+
+The below packages are used for loading data, visualizations, model building and for creating creative plots of the results from each model.
+```{r packages,warning=FALSE, message=FALSE}
+library(MASS) #Boston Housing Data Set
+library(dplyr) #Data Wrangling
+library(tidyverse) #Data Wrangling
+library(knitr) #Knitting RMDs and functionalities
+library(reshape2) #Data Wrangling
+library(ggplot2) #Data Visualization
+library(GGally) #Data Visualization
+library(leaps) #Best Subset selection
+library(boot) #Resampling methods
+library(rpart) #Tree modeling
+library(rattle) #Better Vizzes
+library(mgcv) #GAM modeling
+library(neuralnet) #Neural Networks Model
+library(plyr) #Data Wrangling
+library(caret) #Cross Validation for Neural Networks
+library(e1071) #SVM model
+library(glmnet) #Ridge, Lasso and Elastic Regression
+```
+
+We set up the data using a random seed to sample the data into 75% training and 25% training data. We dont have sufficient data points to have a validation data as well.
+```{r DataSep,warning=FALSE, message=FALSE}
+#Set Seed
+set.seed(10857825)
+#Training and Testing Data
+subset2 = sample(nrow(Boston), nrow(Boston) * 0.75)
+Boston.train2 = Boston[subset2, ]
+Boston.test2 = Boston[-subset2, ]
+```
+
+##Basic Exploratory Analysis
+We perform basic exploratory Analysis to understand the underlying variables and their dependancies.
+We have 506 observations with 14 different variables which are detailed as below.
+```{r}
+kable(str(Boston))
+```
+###Box Plots
+The box plots indicate strongoutliers in the dependant variable `medv` and also in independant variables such as `crim`, `chas`, `black`,`rm` and `zn`. They also indicate that almost none of the variables are normally distributed.
+```{r, warning=FALSE, message=FALSE}
+Boston %>% 
+  gather(key = "attribute", value = "value") %>%
+  ggplot() +
+  geom_boxplot(mapping = aes(x = attribute,
+                             y = value),
+               fill = "#1abc9c") +
+  facet_wrap(~attribute, scales = "free")
+```
+
+###Correlation Plots
+The correlation plots and the matrix indicate the relationship of dependant variable `medv`and other independant variables and also of multicollinearity between the independent variables. We find that `rm`, `ptratio` and `lstat` might be vary influential in determing `medv`
+```{r, warning=FALSE, message=FALSE}
+c<-round(cor(Boston),2)
+kable(c)
+pairs <- ggpairs(Boston, 
+                 lower=list(continuous=wrap("smooth",
+                                            colour="turquoise4")),
+                 diag=list(continuous=wrap("barDiag",
+                                           fill="turquoise4")))  + 
+  theme(panel.background = element_rect(fill = "gray98"),
+        axis.line.y = element_line(colour="gray"),
+        axis.line.x = element_line(colour="gray"))
+pairs
+```
+
+###Density Plots and Histograms
+The density plots and histograms reiterate that none of the variables have a perfectly normal distribution. `rm` has an almost normal distribution and the dependant variable `medv` has a right skewed distribution which can be log transformed to get a better model.
+```{r, warning=FALSE, message=FALSE}
+ggplot(data = melt(Boston), aes(x = value)) +
+  stat_density() +
+  facet_wrap(~variable, scales = "free")
+```
+
+```{r, warning=FALSE, message=FALSE}
+ggplot(data = melt(Boston), aes(x = value)) +
+  geom_histogram() +
+  facet_wrap(~variable, scales = "free")
+```
+
+##Model Performance Indicators
+We will use the following paramters to explain the model performance and the intrinsic differences in the fitting of various models. We can extract all of these results from the fit statement which has a list of stored values for each model.
+**AIC**- Akaike's Information Criterion offers a relative estimate of the infomration lost wen a given model is used to fit the data. It deals with the trade-off between goodness of fit of the model and the complexity of the model. The lower the AIC, better the model.
+**BIC**- Bayesian Information Criterion/ Schwartz Criterion offers a similar trade-off between goodness of fit and complexity of model but penalizes the complexity more than AIC as the number of paramters added to the model increases, typically having BIC values > AIC values. Lower the BIC, Better the model.
+**MSE**- Mean Square Error
+## Variable Selection/Regularization
+As the number of predictors increaeses, we need to work with constraints or regularization to reduce the number of predictors by order of their importance or predictive ability. We have few commonly used methods and few rarely used methods due to complexity listed below:
+**SUBSET SELECTION**- Discrete Elimination, High Variance
+**1. Best Subsets Selection**- EXHAUSTIVE ALGORITHM
+This method typically finds the best subset of each size k which fits the model the best. It is typically feasible for small number of predictors as it becomes tedious as the predictors increase.
+**2.Forward Selection**
+This method uses a null model and builds up with one variable at a time and compares the p values of all the variables and uses that to remove the variables if insignificant.
+**3.Backward Selection**
+This method starts with a full model and starts reducing the predictors one at a time using p value to remove the insignificant variables.
+**4.Stepwise Selection**- GREEDY ALGORITHM
+This method uses a mix of forward and backward and hasthe ability to move in either direction adding one variable at a time till overfitting is detected. This is a greedy algorithm as the model with 5 variables is not the best model of size 5 like in best subsets.
+**SHRINKAGE METHODS**- Continous elimnation, Lower Variance
+**5.Ridge Regression**
+Ridge regression does not select variables but shrinks the correlated predictor coefficient estimates towards each other or zero based on the size of the tuning parameter/complexity paramater. While OLS regression estimates have high variability, by scaling, ridge regression acheives much lesser variability and MSE scores *but still has all variables in the model*.
+**6.LASSO**
+LASSO actually performs variable selection along with shrinkage and is prone to produce more interpretable models when compared to Ridge. LASSO also involves penalizing the OLS estimates of the betas but can zero out some of the betas and picks just one prdictor from a group of correlated variables (**reducing the number of variables in the model**) as it shrinks betas by fixed amounts whereas Ridge regression shrinks everything proportionally. The tuning paramters are determined by Cross Validation.
+**LASSO vs Ridge**
+Lasso performs better where there are small number of predictors with significant coefficients and others are very small or equal to zero whereas Ridge performs better when response is a function of a large number of predictors with coefficients of roughly the same size. 
+**7. Elastic Net**
+Elastic Net mixes the penalty of ridge and lasso and is useful when the number of predictors is very large and we want to select more than one predictor from a group of correlated variables. It behaves similar to lasso but removes any degeneracies and wild behaviour caused by extreme correlations.
+We start with best subsets method, which tells us that `indus`, `age` and `black` may not be great predictors.
+
+###Subset Selection Methods
+```{r, warning=FALSE, message=FALSE}
+#Variable Selection
+par(mfrow=c(1,1))
+#Best Subset Selection using BIC
+subset_result2 = regsubsets(medv ~ ., data = Boston.train2, nbest = 2, nvmax = 14)
+summary(subset_result2)
+plot(subset_result2)
+```
+
+We move on to Stepwise, Forward and Backward selection. All of them produce the same model which just removed the `indus` variable from the model.
+```{r, warning=FALSE, message=FALSE,results= 'hide'}
+#Stepwise
+nullmodel<- glm(medv ~ 1, data = Boston.train2) #only for the intercept
+fullmodel<- glm(medv ~ ., data = Boston.train2) #includes all variables
+model.step<- step(nullmodel, scope = list(lower = nullmodel, upper = fullmodel),direction = "both")
+
+#medv ~ lstat + rm + ptratio + chas + black + dis + nox + age + zn + tax + rad + crim
+#Forward
+model.forward<- step(nullmodel, scope = list(lower = nullmodel, upper = fullmodel),direction = "forward")
+summary(model.forward)
+#medv ~ lstat + rm + ptratio + chas + black + dis + nox + age + zn + tax + rad + crim
+#Backward
+model.backward<-step(fullmodel, direction = "backward")
+summary(model.backward)
+#medv ~ crim + zn + chas + nox + rm + age + dis + rad + tax + ptratio + black + lstat
+#All same models
+```
+
+```{r, warning=FALSE, message=FALSE}
+summary(model.step)
+summary(model.forward)
+summary(model.backward)
+```
+
+
+###Shrinkage Methods
+
+
+
