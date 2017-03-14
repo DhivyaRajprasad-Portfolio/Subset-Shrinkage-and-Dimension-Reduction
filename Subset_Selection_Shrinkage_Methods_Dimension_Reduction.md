@@ -1,12 +1,26 @@
 Subset Selection, Shrinkage Methods and Dimension Reduction
 ================
 
+-   [References](#references)
+-   [Purpose of the Case Study](#purpose-of-the-case-study)
+-   [Packages Used and Data subsetting](#packages-used-and-data-subsetting)
+-   [Basic Exploratory Analysis](#basic-exploratory-analysis)
+    -   [Box Plots](#box-plots)
+    -   [Correlation Plots](#correlation-plots)
+    -   [Density Plots and Histograms](#density-plots-and-histograms)
+-   [Model Performance Indicators](#model-performance-indicators)
+-   [Variable Selection/Regularization](#variable-selectionregularization)
+    -   [Subset Selection Methods - Discrete Elimination, High Variance](#subset-selection-methods---discrete-elimination-high-variance)
+    -   [Shrinkage Methods - Continous elimination, Lower Variance](#shrinkage-methods---continous-elimination-lower-variance)
+    -   [Dimension Reduction Methods](#dimension-reduction-methods)
+
 References
 ----------
 
 1.  [Introduction to statistical learning](http://www-bcf.usc.edu/~gareth/ISL/)
 2.  [Elements of statistical learning](https://statweb.stanford.edu/~tibs/ElemStatLearn/)
 3.  [R Bloggers](https://www.r-bloggers.com/)
+4.  [Caret Package for Predictive Modeling](http://topepo.github.io/caret/visualizations.html)
 
 Purpose of the Case Study
 -------------------------
@@ -184,7 +198,8 @@ Variable Selection/Regularization
 ---------------------------------
 
 As the number of predictors increaeses, we need to work with constraints or regularization to reduce the number of predictors by order of their importance or predictive ability. We have few commonly used methods and few rarely used methods due to complexity listed below:
-\#\#\# Subset Selection Methods - Discrete Elimination, High Variance
+
+### Subset Selection Methods - Discrete Elimination, High Variance
 
 **1. Best Subsets Selection**- EXHAUSTIVE ALGORITHM
 
@@ -407,7 +422,7 @@ Out of Sample MSE- 13.23
 AIC- 2323.87
 BIC- 2375.06
 
-### SHRINKAGE METHODS - Continous elimination, Lower Variance
+### Shrinkage Methods - Continous elimination, Lower Variance
 
 **1.Ridge Regression**
 
@@ -468,7 +483,7 @@ mean((ridge.pred - Boston.test2$medv)^2)
 
     ## [1] 13.21636
 
-We then perform Cross-Validation:
+We then perform Cross-Validation, where the tuning parameter was chosen by minimum RMSE. When there the tuning parameter is zero, the error is very high. As the tuning parameter increases, the error decreases but beyond a value, bias becomes larger and results in a under-fit model.
 
 ``` r
 # Cross-Validation to pick lambda
@@ -519,6 +534,13 @@ mean((ridge.pred - Boston.test2$medv)^2)
 ```
 
     ## [1] 13.21636
+
+``` r
+update(plot(ridge_model), xlab = "Penalty",
+       main = "The Cross-Validation Profiles for Ridge Regression Model")
+```
+
+![](Subset_Selection_Shrinkage_Methods_Dimension_Reduction_files/figure-markdown_github/unnamed-chunk-10-1.png)
 
 The following are the results:
 Without Cross-Validation:
@@ -621,7 +643,12 @@ mean((lasso.pred - Boston.test2$medv)^2)
 
     ## [1] 13.04655
 
-The following are the results:
+``` r
+update(plot(lasso_model), xlab = "Penalty",
+       main = "The Cross-Validation Profiles for LASSO Model")
+```
+
+![](Subset_Selection_Shrinkage_Methods_Dimension_Reduction_files/figure-markdown_github/unnamed-chunk-12-1.png) The following are the results:
 Without Cross-Validation:
 MSE - 13.047
 R^2- 0.67
@@ -768,6 +795,12 @@ mean((enet_pred - Boston.test2$medv)^2)
 
     ## [1] 13.12737
 
+``` r
+update(plot(enet_model), main = "The Cross-Validation Profiles for Elastic Net Model")
+```
+
+![](Subset_Selection_Shrinkage_Methods_Dimension_Reduction_files/figure-markdown_github/unnamed-chunk-14-1.png)
+
 The following are the results:
 Without Cross-Validation:
 MSE - 13.216
@@ -800,9 +833,170 @@ Unlike the above methods where we contrlled for variance by subsets or by shrink
 **1. Principal Components Regression**
 
 PCA (Principal Component Analysis) is a methodology used to derive a low-dimensional set of features from a very large set of predictors. The first PC (principal component) direction of the data is along which the variance of the observations is the highest. This is the line which fits very closely to the data. The second PC is uncorrelated to first PC (orthogonal to first PC) and has the highest variance subjected to a constraint. We use linear combinations of data in orthogonal directions which maximize the variance captured by our model instead of dismissing a variable out of two correlated variables in OLS.
-
 In Principle Components Regression, we construct M principal components and use these in a linear fashion to obtain the least squares. We fit the model only with those variables which explain most of the variability in the data and the relationship with the response variable, thus reducing the risk of overfitting.
 
 There is no feature selection happening as it is a linear combination of all the p original features. PCR is better when the first few PCs are sufficient to capture most of the variation in the data.
 
 **2. Partial Least Squares**
+
+We don't use the response variable to determine the principal component directions, hence making it a unsupervised method. This reduces the guarantee of the principal components explaining the response completely.
+
+Partial Least squares (PLS) method is more supervised dimension reduction technique which identifies a smaller set of features which are linear combinations of original features using the response variable to identify these new features.
+
+The methods places higher weights on variables that are more related to the response variable. To attain the directions, PLS asjusts each of these variables for the first component by regressing them on first component and taking residuals. The residuals are the remaining information which has not been explained by the first PLS direction. This is them iterated M times to identify multiple PLS components.
+
+**Implementation**
+
+We start with PCR with Cross-Validation:
+
+``` r
+set.seed(10857825)
+pcr_model <- train(medv ~ .,
+                  data = Boston.train2,
+                  method = "pcr",
+                  preProcess = c("center", "scale"),
+                  tuneGrid = expand.grid(ncomp = 1:13),
+                  trControl = trainControl(method= "cv"))
+summary(pcr_model)
+```
+
+    ## Data:    X dimension: 379 13 
+    ##  Y dimension: 379 1
+    ## Fit method: svdpc
+    ## Number of components considered: 13
+    ## TRAINING: % variance explained
+    ##           1 comps  2 comps  3 comps  4 comps  5 comps  6 comps  7 comps
+    ## X           46.96    58.06    67.76    74.34    80.65    85.71    89.74
+    ## .outcome    33.62    46.79    63.29    65.84    68.15    68.23    68.23
+    ##           8 comps  9 comps  10 comps  11 comps  12 comps  13 comps
+    ## X           92.78    94.89     96.60     98.13     99.51    100.00
+    ## .outcome    68.62    68.62     68.91     69.57     71.38     72.23
+
+``` r
+pcr_pred <- predict(pcr_model, Boston.test2)
+mean((pcr_pred - Boston.test2$medv)^2)
+```
+
+    ## [1] 13.21715
+
+``` r
+df_pcr <- data.frame(predicted = pcr_pred, observed = Boston.test2$medv,
+                    residual = Boston.test2$medv - pcr_pred)
+
+ggplot(df_pcr, aes(x = predicted, y = observed)) +
+  geom_point() +
+  geom_abline(intercept = 0, slope = 1, colour = "blue") +
+  ggtitle("Principal Component Regression Predicted VS Observed")
+```
+
+![](Subset_Selection_Shrinkage_Methods_Dimension_Reduction_files/figure-markdown_github/unnamed-chunk-16-1.png)
+
+``` r
+ggplot(df_pcr, aes(x = predicted, y = residual)) +
+  geom_point() +
+  geom_hline(yintercept = 0, colour = "blue") +
+  ggtitle("Principal Component Regression Predicted VS Residual")
+```
+
+![](Subset_Selection_Shrinkage_Methods_Dimension_Reduction_files/figure-markdown_github/unnamed-chunk-16-2.png)
+
+The following are the results:
+With Cross-Validation:
+MSE- 13.22
+R^2- 0.72 which was very similar to the previous results on subsets and shrinkage methods, LASSO seems to be the best till now.
+
+We move on to PLS with Cross-Validation:
+
+``` r
+set.seed(10857825)
+pls_model <- train(medv ~ .,
+                  data = Boston.train2,
+                  method = "pls",
+                  preProcess = c("center", "scale"),
+                  tuneGrid = expand.grid(ncomp = 1:13),
+                  trControl = trainControl(method= "cv"))
+pls_model
+```
+
+    ## Partial Least Squares 
+    ## 
+    ## 379 samples
+    ##  13 predictor
+    ## 
+    ## Pre-processing: centered (13), scaled (13) 
+    ## Resampling: Cross-Validated (10 fold) 
+    ## Summary of sample sizes: 340, 342, 341, 342, 341, 341, ... 
+    ## Resampling results across tuning parameters:
+    ## 
+    ##   ncomp  RMSE      Rsquared 
+    ##    1     6.772785  0.4969822
+    ##    2     5.341923  0.7007097
+    ##    3     5.300352  0.7069505
+    ##    4     5.291587  0.7047638
+    ##    5     5.252015  0.7062137
+    ##    6     5.187311  0.7116443
+    ##    7     5.183253  0.7116776
+    ##    8     5.180944  0.7117240
+    ##    9     5.178708  0.7121836
+    ##   10     5.180484  0.7119228
+    ##   11     5.181156  0.7118441
+    ##   12     5.181064  0.7118509
+    ##   13     5.181056  0.7118516
+    ## 
+    ## RMSE was used to select the optimal model using  the smallest value.
+    ## The final value used for the model was ncomp = 9.
+
+``` r
+pls_pred <- predict(pls_model, Boston.test2)
+mean((pls_pred - Boston.test2$medv)^2)
+```
+
+    ## [1] 13.2497
+
+``` r
+df_pls <- data.frame(predicted = pls_pred, observed = Boston.test2$medv,
+                    residual = Boston.test2$medv - pls_pred)
+
+ggplot(df_pls, aes(x = predicted, y = observed)) +
+  geom_point() +
+  geom_abline(intercept = 0, slope = 1, colour = "blue") +
+  ggtitle("Partial Least Squares Predicted VS Observed")
+```
+
+![](Subset_Selection_Shrinkage_Methods_Dimension_Reduction_files/figure-markdown_github/unnamed-chunk-17-1.png)
+
+``` r
+ggplot(df_pls, aes(x = predicted, y = residual)) +
+  geom_point() +
+  geom_hline(yintercept = 0, colour = "blue") +
+  ggtitle("Partial Least Squares Predicted VS Residual")
+```
+
+![](Subset_Selection_Shrinkage_Methods_Dimension_Reduction_files/figure-markdown_github/unnamed-chunk-17-2.png)
+
+``` r
+# visualization to compare pcr and pls models
+pcr_model$results$model <- "pcr"
+pls_model$results$model <- "pls"
+
+df_pcr_pls <- rbind(pcr_model$results, pls_model$results)
+ggplot(df_pcr_pls, aes(x = ncomp, y = RMSE, colour = model)) +
+  geom_line() +
+  geom_point() +
+  ggtitle("PCR VS PLS")
+```
+
+![](Subset_Selection_Shrinkage_Methods_Dimension_Reduction_files/figure-markdown_github/unnamed-chunk-17-3.png)
+
+``` r
+# rank the importance of the predictors
+pls_imp <- varImp(pls_model, scale = FALSE)
+plot(pls_imp, scales = list(y = list(cex = .95)))
+```
+
+![](Subset_Selection_Shrinkage_Methods_Dimension_Reduction_files/figure-markdown_github/unnamed-chunk-17-4.png)
+
+The following are the results:
+With Cross-Validation:
+MSE- 13.25
+R^2- 0.71 but we find an interesting observation when we compare PLS with PCR, PLS finds the minimum RMSE with just 10 components while the unsupervised PCR takes 13 components to find it. So, we find PLS builds simpler and more useful models. We can also compute the importance of each variable and find `rm`(number of rooms in the dwelling) to be very important.
